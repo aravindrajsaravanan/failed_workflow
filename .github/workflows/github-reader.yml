@@ -26,3 +26,9 @@ jobs:
 
       - name: Read GitHub workflow runs
         run: python github_reader.py
+
+      - name: Read GitHub workflow runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python github_reader.py
+
