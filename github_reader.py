@@ -1,31 +1,66 @@
 
+import os
 import requests
 
 OWNER = "aravindrajsaravanan"
 REPO = "failed_workflow"
+BASE = f"https://api.github.com/repos/{OWNER}/{REPO}"
 
-url = f"https://api.github.com/repos/{OWNER}/{REPO}/actions/runs"
+token = os.environ["GITHUB_TOKEN"]
 
-response = requests.get(url, timeout=15)
-response.raise_for_status()
+headers = {
+    "Authorization": f"Bearer {token}",
+    "Accept": "application/vnd.github+json",
+}
 
-runs = response.json().get("workflow_runs", [])
+def get_json(url):
+    response = requests.get(
+        url, headers=headers, timeout=30
+    )
+    response.raise_for_status()
+    return response.json()
 
-print("Checking GitHub Actions for failed pipelines...")
+runs = get_json(
+    f"{BASE}/actions/runs?status=failure&per_page=30"
+)["workflow_runs"]
 
-failed_runs = [
+calculator_runs = [
     run for run in runs
-    if run["conclusion"] == "failure"
+    if run["name"] == "Python Calculator Tests"
 ]
 
-if not failed_runs:
-    print("No failed pipelines found in recent runs.")
+if not calculator_runs:
+    print("No failed calculator runs found.")
 else:
-    for run in failed_runs:
-        print("--------------------")
-        print("Workflow:", run["name"])
-        print("Run ID:", run["id"])
-        print("Conclusion:", run["conclusion"])
-        print("URL:", run["html_url"])
+    run = calculator_runs[0]
+    print("Failed workflow:", run["name"])
+    print("Run ID:", run["id"])
 
-print("Total failed runs found:", len(failed_runs))
+    jobs = get_json(
+        f"{BASE}/actions/runs/{run['id']}/jobs"
+    )["jobs"]
+
+    for job in jobs:
+        if job["conclusion"] != "failure":
+            continue
+
+        print("Failed job:", job["name"])
+        print("Downloading job logs...")
+
+        log_url = f"{BASE}/actions/jobs/{job['id']}/logs"
+        response = requests.get(
+            log_url, headers=headers, timeout=60
+        )
+        response.raise_for_status()
+
+        log_lines = response.text.splitlines()
+
+        print("Relevant error lines:")
+        for line in log_lines:
+            if any(word in line.lower() for word in [
+                "assertionerror",
+                "assert 14 == 6",
+                "test_subtract",
+                "failed"
+            ]):
+                print(line[:500])
