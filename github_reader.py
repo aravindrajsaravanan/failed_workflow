@@ -11,9 +11,21 @@ response.raise_for_status()
 
 runs = response.json().get("workflow_runs", [])
 
-for run in runs[:5]:
-    print("Run ID:", run["id"])
-    print("Status:", run["status"])
-    print("Conclusion:", run["conclusion"])
-    print("URL:", run["html_url"])
-    print("--------------------")
+print("Checking GitHub Actions for failed pipelines...")
+
+failed_runs = [
+    run for run in runs
+    if run["conclusion"] == "failure"
+]
+
+if not failed_runs:
+    print("No failed pipelines found in recent runs.")
+else:
+    for run in failed_runs:
+        print("--------------------")
+        print("Workflow:", run["name"])
+        print("Run ID:", run["id"])
+        print("Conclusion:", run["conclusion"])
+        print("URL:", run["html_url"])
+
+print("Total failed runs found:", len(failed_runs))
