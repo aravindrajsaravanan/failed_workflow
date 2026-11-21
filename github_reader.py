@@ -20,6 +20,23 @@ def get_json(url):
     response.raise_for_status()
     return response.json()
 
+def analyze_failure(logs):
+    print("\n===== ROOT CAUSE ANALYSIS =====")
+
+    if "test_subtract" in logs and (
+        "assert 14 == 6" in logs
+        or "assert 14 == 6" in logs.replace("  ", " ")
+    ):
+        print("Failed test: test_subtract")
+        print("Actual result: 14")
+        print("Expected result: 6")
+        print("Likely cause: Incorrect subtraction logic")
+        print("Known issue: subtract() adds instead of subtracting")
+        print("Suggested fix: return a - b")
+    else:
+        print("No matching rule found.")
+        print("Manual or AI analysis required.")
+
 runs = get_json(
     f"{BASE}/actions/runs?status=failure&per_page=30"
 )["workflow_runs"]
@@ -45,22 +62,23 @@ else:
             continue
 
         print("Failed job:", job["name"])
-        print("Downloading job logs...")
 
-        log_url = f"{BASE}/actions/jobs/{job['id']}/logs"
         response = requests.get(
-            log_url, headers=headers, timeout=60
+            f"{BASE}/actions/jobs/{job['id']}/logs",
+            headers=headers,
+            timeout=60
         )
         response.raise_for_status()
 
-        log_lines = response.text.splitlines()
+        logs = response.text
 
-        print("Relevant error lines:")
-        for line in log_lines:
+        print("\nRelevant error lines:")
+        for line in logs.splitlines():
             if any(word in line.lower() for word in [
                 "assertionerror",
                 "assert 14 == 6",
                 "test_subtract",
-                "failed"
             ]):
                 print(line[:500])
+
+        analyze_failure(logs)
