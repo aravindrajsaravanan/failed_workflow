@@ -1,5 +1,6 @@
 
 import os
+import json
 import requests
 
 OWNER = "aravindrajsaravanan"
@@ -21,21 +22,27 @@ def get_json(url):
     return response.json()
 
 def analyze_failure(logs):
-    print("\n===== ROOT CAUSE ANALYSIS =====")
+    if "test_subtract" in logs and "assert 14 == 6" in logs:
+        return {
+            "failed_test": "test_subtract",
+            "error": "AssertionError: assert 14 == 6",
+            "actual_result": 14,
+            "expected_result": 6,
+            "root_cause": (
+                "Incorrect subtraction logic. "
+                "The function adds instead of subtracting."
+            ),
+            "suggested_fix": "return a - b",
+            "analysis_type": "rule-based"
+        }
 
-    if "test_subtract" in logs and (
-        "assert 14 == 6" in logs
-        or "assert 14 == 6" in logs.replace("  ", " ")
-    ):
-        print("Failed test: test_subtract")
-        print("Actual result: 14")
-        print("Expected result: 6")
-        print("Likely cause: Incorrect subtraction logic")
-        print("Known issue: subtract() adds instead of subtracting")
-        print("Suggested fix: return a - b")
-    else:
-        print("No matching rule found.")
-        print("Manual or AI analysis required.")
+    return {
+        "failed_test": "unknown",
+        "error": "Unrecognized failure",
+        "root_cause": "Further investigation required",
+        "suggested_fix": "Manual or AI analysis required",
+        "analysis_type": "rule-based"
+    }
 
 runs = get_json(
     f"{BASE}/actions/runs?status=failure&per_page=30"
@@ -48,10 +55,9 @@ calculator_runs = [
 
 if not calculator_runs:
     print("No failed calculator runs found.")
+
 else:
     run = calculator_runs[0]
-    print("Failed workflow:", run["name"])
-    print("Run ID:", run["id"])
 
     jobs = get_json(
         f"{BASE}/actions/runs/{run['id']}/jobs"
@@ -61,8 +67,6 @@ else:
         if job["conclusion"] != "failure":
             continue
 
-        print("Failed job:", job["name"])
-
         response = requests.get(
             f"{BASE}/actions/jobs/{job['id']}/logs",
             headers=headers,
@@ -71,14 +75,24 @@ else:
         response.raise_for_status()
 
         logs = response.text
+        analysis = analyze_failure(logs)
 
-        print("\nRelevant error lines:")
-        for line in logs.splitlines():
-            if any(word in line.lower() for word in [
-                "assertionerror",
-                "assert 14 == 6",
-                "test_subtract",
-            ]):
-                print(line[:500])
+        report = {
+            "repository": f"{OWNER}/{REPO}",
+            "workflow": run["name"],
+            "run_id": run["id"],
+            "run_url": run["html_url"],
+            "job": job["name"],
+            "conclusion": job["conclusion"],
+            "analysis": analysis
+        }
 
-        analyze_failure(logs)
+        with open(
+            "failure_report.json", "w", encoding="utf-8"
+        ) as file:
+            json.dump(report, file, indent=4)
+
+        print("===== FAILURE REPORT =====")
+        print(json.dumps(report, indent=4))
+        print("Report saved: failure_report.json")
+        break
