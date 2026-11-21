@@ -1,5 +1,6 @@
 
 import os
+import re
 import json
 import requests
 
@@ -11,8 +12,9 @@ token = os.environ["GITHUB_TOKEN"]
 
 headers = {
     "Authorization": f"Bearer {token}",
-    "Accept": "application/vnd.github+json",
+    "Accept": "application/vnd.github+json"
 }
+
 
 def get_json(url):
     response = requests.get(
@@ -21,28 +23,113 @@ def get_json(url):
     response.raise_for_status()
     return response.json()
 
+
 def analyze_failure(logs):
-    if "test_subtract" in logs and "assert 14 == 6" in logs:
+    # Remove ANSI color codes from logs
+    clean_logs = re.sub(
+        r"\x1b\[[0-9;]*m", "", logs
+    )
+    lower_logs = clean_logs.lower()
+
+    if (
+        "test_subtract" in lower_logs
+        and "assert 14 == 6" in lower_logs
+    ):
         return {
+            "error_type": "AssertionError",
             "failed_test": "test_subtract",
-            "error": "AssertionError: assert 14 == 6",
-            "actual_result": 14,
-            "expected_result": 6,
             "root_cause": (
-                "Incorrect subtraction logic. "
-                "The function adds instead of subtracting."
+                "Known calculator bug: subtraction "
+                "function performs addition."
             ),
             "suggested_fix": "return a - b",
             "analysis_type": "rule-based"
         }
 
+    if "modulenotfounderror" in lower_logs:
+        return {
+            "error_type": "ModuleNotFoundError",
+            "root_cause": (
+                "A required Python module is missing "
+                "from the execution environment."
+            ),
+            "suggested_fix": (
+                "Check dependency installation, "
+                "requirements.txt and Python environment."
+            ),
+            "analysis_type": "rule-based"
+        }
+
+    if "connection refused" in lower_logs:
+        return {
+            "error_type": "ConnectionError",
+            "root_cause": (
+                "The target service refused a "
+                "network connection."
+            ),
+            "suggested_fix": (
+                "Check service status, target host, "
+                "port and network configuration."
+            ),
+            "analysis_type": "rule-based"
+        }
+
+    if "permission denied" in lower_logs:
+        return {
+            "error_type": "PermissionError",
+            "root_cause": (
+                "The process was denied access "
+                "to a required resource."
+            ),
+            "suggested_fix": (
+                "Check file permissions, credentials "
+                "and access policies."
+            ),
+            "analysis_type": "rule-based"
+        }
+
+    if (
+        "timeouterror" in lower_logs
+        or "timed out" in lower_logs
+    ):
+        return {
+            "error_type": "TimeoutError",
+            "root_cause": (
+                "An operation exceeded its allowed "
+                "time limit."
+            ),
+            "suggested_fix": (
+                "Check service availability, network "
+                "latency and timeout configuration."
+            ),
+            "analysis_type": "rule-based"
+        }
+
+    if "assertionerror" in lower_logs:
+        return {
+            "error_type": "AssertionError",
+            "root_cause": (
+                "A test assertion failed; the exact "
+                "cause requires investigation."
+            ),
+            "suggested_fix": (
+                "Compare actual and expected results, "
+                "then inspect the relevant code."
+            ),
+            "analysis_type": "rule-based"
+        }
+
     return {
-        "failed_test": "unknown",
-        "error": "Unrecognized failure",
-        "root_cause": "Further investigation required",
-        "suggested_fix": "Manual or AI analysis required",
+        "error_type": "Unknown",
+        "root_cause": "Not determined",
+        "suggested_fix": (
+            "Review the failed step and its logs."
+        ),
         "analysis_type": "rule-based"
     }
+
+
+print("Checking failed GitHub Actions pipelines...")
 
 runs = get_json(
     f"{BASE}/actions/runs?status=failure&per_page=30"
@@ -74,8 +161,7 @@ else:
         )
         response.raise_for_status()
 
-        logs = response.text
-        analysis = analyze_failure(logs)
+        analysis = analyze_failure(response.text)
 
         report = {
             "repository": f"{OWNER}/{REPO}",
@@ -88,7 +174,9 @@ else:
         }
 
         with open(
-            "failure_report.json", "w", encoding="utf-8"
+            "failure_report.json",
+            "w",
+            encoding="utf-8"
         ) as file:
             json.dump(report, file, indent=4)
 
